@@ -43,6 +43,10 @@ const VirtualClassroom: React.FC = () => {
   const [isConverting, setIsConverting] = useState(false);
   const [showNameInput, setShowNameInput] = useState(true);
   const [isJoining, setIsJoining] = useState(false);
+  const [sessionTimer, setSessionTimer] = useState(0);
+  const [currentView, setCurrentView] = useState<'whiteboard' | 'share' | 'file'>('whiteboard');
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShareTrack, setScreenShareTrack] = useState<any>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +60,21 @@ const VirtualClassroom: React.FC = () => {
     roomId: `classroom-${sessionId}`
   });
 
+  // Timer effect
+  useEffect(() => {
+    if (isConnected) {
+      const interval = setInterval(() => {
+        setSessionTimer(prev => prev + 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected]);
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     return () => {
@@ -72,10 +90,40 @@ const VirtualClassroom: React.FC = () => {
       identity: p.participant.identity,
       hasVideo: !!p.videoTrack,
       hasAudio: !!p.audioTrack,
+      audioMuted: p.audioTrack?.isMuted,
       videoSid: p.videoTrack?.sid,
       audioSid: p.audioTrack?.sid
     })));
   }, [remoteParticipants]);
+
+  // Monitor local participant audio state
+  useEffect(() => {
+    if (room && room.localParticipant) {
+      const audioPublications = Array.from(room.localParticipant.audioTrackPublications.values());
+      if (audioPublications.length > 0) {
+        const audioTrack = audioPublications[0].track;
+        if (audioTrack) {
+          const updateLocalAudioState = () => {
+            setLocalTracks(prev => ({
+              ...prev,
+              audio: !audioTrack.isMuted
+            }));
+          };
+          
+          audioTrack.on('muted', updateLocalAudioState);
+          audioTrack.on('unmuted', updateLocalAudioState);
+          
+          // Initial state
+          updateLocalAudioState();
+          
+          return () => {
+            audioTrack.off('muted', updateLocalAudioState);
+            audioTrack.off('unmuted', updateLocalAudioState);
+          };
+        }
+      }
+    }
+  }, [room]);
 
   const handleNameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,10 +375,38 @@ const VirtualClassroom: React.FC = () => {
 
   const handleTrackMuted = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
     console.log('Track muted:', publication.kind, participant.identity);
+    
+    // Update participant state when track is muted
+    setRemoteParticipants(prev => prev.map(p => {
+      if (p.participant.identity === participant.identity) {
+        if (publication.kind === Track.Kind.Audio) {
+          return { ...p, audioTrack: null };
+        } else if (publication.kind === Track.Kind.Video) {
+          return { ...p, videoTrack: null };
+        }
+      }
+      return p;
+    }));
   };
 
   const handleTrackUnmuted = (publication: RemoteTrackPublication, participant: RemoteParticipant) => {
     console.log('Track unmuted:', publication.kind, participant.identity);
+    
+    // Update participant state when track is unmuted
+    setRemoteParticipants(prev => prev.map(p => {
+      if (p.participant.identity === participant.identity) {
+        if (publication.kind === Track.Kind.Audio) {
+          // Find the audio track from the publication
+          const audioTrack = publication.track;
+          return { ...p, audioTrack: audioTrack || null };
+        } else if (publication.kind === Track.Kind.Video) {
+          // Find the video track from the publication
+          const videoTrack = publication.track;
+          return { ...p, videoTrack: videoTrack || null };
+        }
+      }
+      return p;
+    }));
   };
 
   const toggleVideo = async () => {
@@ -348,13 +424,25 @@ const VirtualClassroom: React.FC = () => {
   const toggleAudio = async () => {
     if (!room) return;
     
-    if (localTracks.audio) {
-      await room.localParticipant.setMicrophoneEnabled(false);
-      setLocalTracks(prev => ({ ...prev, audio: false }));
-    } else {
-      await room.localParticipant.setMicrophoneEnabled(true);
-      setLocalTracks(prev => ({ ...prev, audio: true }));
+    try {
+      if (localTracks.audio) {
+        await room.localParticipant.setMicrophoneEnabled(false);
+        setLocalTracks(prev => ({ ...prev, audio: false }));
+        console.log('Microphone disabled');
+      } else {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        setLocalTracks(prev => ({ ...prev, audio: true }));
+        console.log('Microphone enabled');
+      }
+    } catch (error) {
+      console.error('Error toggling microphone:', error);
+      setError('Failed to toggle microphone');
     }
+  };
+
+  // Helper function to check if a participant has active audio
+  const hasActiveAudio = (participant: RemoteParticipantInfo) => {
+    return participant.audioTrack !== null && !participant.audioTrack.isMuted;
   };
 
   const leaveRoom = async () => {
@@ -518,6 +606,42 @@ const VirtualClassroom: React.FC = () => {
     }
   };
 
+  const toggleScreenShare = async () => {
+    if (!room) return;
+    
+    try {
+      if (isScreenSharing) {
+        // Stop screen sharing
+        if (screenShareTrack) {
+          await room.localParticipant.unpublishTrack(screenShareTrack);
+          setScreenShareTrack(null);
+        }
+        setIsScreenSharing(false);
+        console.log('Screen sharing stopped');
+      } else {
+        // Start screen sharing
+        const screenTracks = await room.localParticipant.createScreenTracks({
+          audio: false,
+        });
+        
+        if (screenTracks.length > 0) {
+          const screenTrack = screenTracks[0];
+          await room.localParticipant.publishTrack(screenTrack);
+          setScreenShareTrack(screenTrack);
+        }
+        setIsScreenSharing(true);
+        console.log('Screen sharing started');
+      }
+    } catch (error) {
+      console.error('Error toggling screen share:', error);
+      setError('Failed to toggle screen sharing');
+    }
+  };
+
+  const handleFileButtonClick = () => {
+    triggerFileUpload();
+  };
+
   if (showNameInput) {
     return (
       <div className="name-input-container">
@@ -571,143 +695,231 @@ const VirtualClassroom: React.FC = () => {
   }
 
   return (
-    <div className="virtual-classroom">
-      <div className="classroom-header">
-        <div className="session-info">
-          <h1>Virtual Classroom - Session {sessionId}</h1>
-          <p>Role: {role.charAt(0).toUpperCase() + role.slice(1)} | Participant: {participantName}</p>
-          <p>Connected: {isConnected ? 'Yes' : 'No'} | Remote Participants: {remoteParticipants.length}</p>
+    <div className="virtual-classroom-new">
+      {/* Top Bar */}
+      <div className="top-bar">
+        <div className="logo-section">
         </div>
         
-        <div className="controls">
-          <button 
-            onClick={toggleVideo} 
-            className={`control-btn ${localTracks.video ? 'active' : 'inactive'}`}
-          >
-            {localTracks.video ? '📹' : '🚫📹'}
-          </button>
-          
-          <button 
-            onClick={toggleAudio} 
-            className={`control-btn ${localTracks.audio ? 'active' : 'inactive'}`}
-          >
-            {localTracks.audio ? '🎤' : '🚫🎤'}
-          </button>
-          
-          {role === 'tutor' && (
-            <button onClick={triggerFileUpload} className="control-btn upload-btn">
-              📁 Upload
-            </button>
-          )}
-          
-          <button 
-            onClick={() => {
-              if (window.confirm('Are you sure you want to leave the classroom? This will end your session.')) {
-                leaveRoom();
-              }
-            }} 
-            className="control-btn leave-btn"
-          >
-            🚪 Leave
-          </button>
+        <div className="session-status">
+          <div className="report-problem">
+            <span className="warning-icon">⚠️</span>
+            <span>Report a Problem</span>
+          </div>
+          <div className="session-timer">
+            <span className="timer-icon">⏰</span>
+            <span>Started: {formatTime(sessionTimer)}</span>
+          </div>
         </div>
       </div>
 
-      <div className="classroom-content">
-        <div className="video-section">
-          <div className="local-video">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              muted 
-              playsInline
-              className="video-element"
-            />
-            <div className="video-label">You ({participantName})</div>
-          </div>
-          
-          {remoteParticipants.map((remoteParticipant) => (
-            <div key={remoteParticipant.participant.identity} className="remote-video">
-              {remoteParticipant.videoTrack ? (
-                <video
-                  key={`${remoteParticipant.participant.identity}-${remoteParticipant.videoTrack.sid}`}
-                  autoPlay
-                  playsInline
-                  className="video-element"
-                  ref={(el) => {
-                    if (el && remoteParticipant.videoTrack) {
-                      console.log('Attaching video track to element for:', remoteParticipant.participant.identity);
-                      try {
-                        remoteParticipant.videoTrack.attach(el);
-                        console.log('Video track attached successfully for:', remoteParticipant.participant.identity);
-                      } catch (error) {
-                        console.error('Error attaching video track:', error);
-                      }
-                    }
-                  }}
-                />
-              ) : (
-                <div className="video-placeholder">
-                  <div className="participant-info">
-                    <span>{remoteParticipant.participant.identity}</span>
-                    <br />
-                    <small>Camera Off</small>
-                  </div>
-                </div>
-              )}
-              <div className="video-label">
-                {remoteParticipant.participant.identity}
-                {remoteParticipant.videoTrack && <span className="video-status">📹</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="whiteboard-section">
-          <div className="whiteboard-header">
-            <h3>Interactive Whiteboard</h3>
-            <div className="whiteboard-info">
-              <span className="role-badge">{role}</span>
-              <span className="participant-badge">{participantName}</span>
-            </div>
-            {convertedImages.length > 0 && (
-              <div className="converted-files">
-                <h4>📁 Uploaded Files</h4>
-                <p className="file-instructions">Click any file to add it to the whiteboard</p>
-                <div className="file-grid">
-                  {convertedImages.map((url, index) => (
-                    <div key={index} className="file-item" onClick={() => addImageToWhiteboard(url, index)}>
-                      <img 
-                        src={url} 
-                        alt={`Converted file ${index + 1}`}
-                        className="converted-image"
-                      />
-                      <div className="file-overlay">
-                        <span className="file-number">#{index + 1}</span>
-                        <span className="add-to-whiteboard">➕ Add to Whiteboard</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          
+      {/* Main Content */}
+      <div className="main-content">
+        {/* Whiteboard Area */}
+        <div className="whiteboard-area">
           <div className="whiteboard-container">
             <Tldraw 
               store={syncStore}
               autoFocus
               inferDarkMode
               onMount={(editor) => {
-                // Store editor reference for later use
                 editorRef.current = editor;
-                
-                // Set up the editor with session-specific configuration
                 editor.setCurrentTool('select');
               }}
             />
           </div>
+          
+          {/* Uploaded Files Display */}
+          {convertedImages.length > 0 && (
+            <div className="uploaded-files-panel">
+              <h4>📁 Uploaded Files</h4>
+              <div className="files-grid">
+                {convertedImages.map((url, index) => (
+                  <div key={index} className="file-item" onClick={() => addImageToWhiteboard(url, index)}>
+                    <img 
+                      src={url} 
+                      alt={`Converted file ${index + 1}`}
+                      className="converted-image"
+                    />
+                    <div className="file-overlay">
+                      <span className="file-number">#{index + 1}</span>
+                      <span className="add-to-whiteboard">➕ Add to Whiteboard</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Page Navigation */}
+          <div className="page-navigation">
+            <button className="page-btn">+</button>
+            <div className="page-info">
+              <span>&lt; 1 / 1 &gt;</span>
+            </div>
+            <button className="page-btn">←</button>
+            <button className="page-btn">→</button>
+            <button className="page-btn">↻</button>
+          </div>
         </div>
+
+        {/* Right Sidebar */}
+        <div className="right-sidebar">
+
+          {/* Participant Panels */}
+          <div className="participant-panels">
+            {/* Local Participant */}
+            <div className="participant-panel">
+              <div className="participant-video">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  muted 
+                  playsInline
+                  className="video-element"
+                />
+                {!localTracks.video && (
+                  <div className="camera-off-overlay">
+                    <span className="camera-icon">📹</span>
+                  </div>
+                )}
+              </div>
+              <div className="participant-info">
+                <div className="mic-indicator">
+                  <span className={`mic-icon ${localTracks.audio ? 'active' : 'muted'}`}>
+                    {localTracks.audio ? '🎤' : '🔇'}
+                  </span>
+                </div>
+                <span className="participant-name">{participantName}</span>
+              </div>
+            </div>
+
+            {/* Remote Participants */}
+            {remoteParticipants.map((remoteParticipant) => (
+              <div key={remoteParticipant.participant.identity} className="participant-panel">
+                <div className="participant-video">
+                  {remoteParticipant.videoTrack ? (
+                    <video
+                      key={`${remoteParticipant.participant.identity}-${remoteParticipant.videoTrack.sid}`}
+                      autoPlay
+                      playsInline
+                      className="video-element"
+                      ref={(el) => {
+                        if (el && remoteParticipant.videoTrack) {
+                          try {
+                            remoteParticipant.videoTrack.attach(el);
+                          } catch (error) {
+                            console.error('Error attaching video track:', error);
+                          }
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="video-placeholder">
+                      <span className="person-icon">👤</span>
+                    </div>
+                  )}
+                  {!remoteParticipant.videoTrack && (
+                    <div className="camera-off-overlay">
+                      <span className="camera-icon">📹</span>
+                    </div>
+                  )}
+                </div>
+                <div className="participant-info">
+                  <div className="mic-indicator">
+                    <span className={`mic-icon ${hasActiveAudio(remoteParticipant) ? 'active' : 'muted'}`}>
+                      {hasActiveAudio(remoteParticipant) ? '🎤' : '🔇'}
+                    </span>
+                  </div>
+                  <span className="participant-name">{remoteParticipant.participant.identity}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Control Bar */}
+      <div className="bottom-controls">
+        <button 
+          onClick={toggleAudio} 
+          className={`control-btn ${localTracks.audio ? 'active' : 'muted'}`}
+        >
+          <div className="control-icon-wrapper">
+            <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+            {!localTracks.audio && <div className="mute-line"></div>}
+          </div>
+          <span className="control-label">Mic</span>
+        </button>
+        
+        <button 
+          onClick={toggleVideo} 
+          className={`control-btn ${localTracks.video ? 'active' : 'muted'}`}
+        >
+          <div className="control-icon-wrapper">
+            <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+            </svg>
+            {!localTracks.video && <div className="mute-line"></div>}
+          </div>
+          <span className="control-label">Camera</span>
+        </button>
+        
+        <button 
+          onClick={() => setCurrentView('whiteboard')}
+          className={`control-btn ${currentView === 'whiteboard' ? 'active' : ''}`}
+        >
+          <div className="control-icon-wrapper">
+            <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+            </svg>
+          </div>
+          <span className="control-label">Whiteboard</span>
+        </button>
+        
+        <button 
+          onClick={toggleScreenShare}
+          className={`control-btn ${isScreenSharing ? 'active' : ''}`}
+        >
+          <div className="control-icon-wrapper">
+            <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm6 12H6v-1.4c0-2 4-3.1 6-3.1s6 1.1 6 3.1V18z"/>
+              <path d="M12 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+            </svg>
+          </div>
+          <span className="control-label">Share</span>
+        </button>
+        
+        <button 
+          onClick={handleFileButtonClick}
+          className={`control-btn`}
+        >
+          <div className="control-icon-wrapper">
+            <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+            </svg>
+          </div>
+          <span className="control-label">File</span>
+        </button>
+        
+        <button 
+          onClick={() => {
+            if (window.confirm('Are you sure you want to leave the classroom?')) {
+              leaveRoom();
+            }
+          }} 
+          className="control-btn exit-btn"
+        >
+          <div className="control-icon-wrapper">
+            <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </div>
+          <span className="control-label">Exit</span>
+        </button>
       </div>
 
       <input
