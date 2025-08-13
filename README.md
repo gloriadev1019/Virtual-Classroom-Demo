@@ -208,8 +208,6 @@ soffice --headless --convert-to png --outdir /tmp /path/to/test.pdf
 - **File Upload Validation**: Secure file handling with type restrictions
 - **CORS Configuration**: Proper cross-origin resource sharing setup
 
-```
-
 ## 📁 Project Structure
 
 ```
@@ -244,7 +242,5 @@ Virtual-Classroom-Demo/
 │   └── package.json            # Node.js Dependencies
 └── README.md                   # This File
 ```
-
----
 
 **Built with ❤️ using React.js, Laravel, LiveKit Cloud, and tldraw**
