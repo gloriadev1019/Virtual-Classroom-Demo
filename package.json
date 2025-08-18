@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@livekit/components-react": "^2.9.14",
+    "@livekit/track-processors": "^0.5.8"
+  }
+}

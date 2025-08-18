@@ -85,6 +85,25 @@
   font-size: 1rem;
 }
 
+.virtual-background-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #007bff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  background: rgba(0, 123, 255, 0.1);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 123, 255, 0.2);
+}
+
+.virtual-background-icon {
+  font-size: 1rem;
+}
+
+
+
 .session-timer {
   display: flex;
   align-items: center;
@@ -501,6 +520,25 @@
 }
 
 .noise-cancellation-indicator svg {
+  color: white;
+}
+
+.virtual-background-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  background: #007bff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  border: 2px solid white;
+}
+
+.virtual-background-indicator svg {
   color: white;
 }
 

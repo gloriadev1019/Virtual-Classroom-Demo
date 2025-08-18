@@ -5,6 +5,7 @@ import { Tldraw, toRichText } from 'tldraw';
 import { useSyncDemo } from '@tldraw/sync';
 import 'tldraw/tldraw.css';
 import './VirtualClassroom.css';
+import { VirtualBackgroundManager, createTutorVirtualBackground, TUTOR_BACKGROUND } from '../utils/virtualBackground';
 
 interface FileUploadResponse {
   success: boolean;
@@ -48,6 +49,9 @@ const VirtualClassroom: React.FC = () => {
   const [localTracks, setLocalTracks] = useState<{ video: boolean; audio: boolean }>({ video: false, audio: false });
   // State to track noise cancellation status (LiveKit Cloud Krisp)
   const [noiseCancellationEnabled, setNoiseCancellationEnabled] = useState<boolean>(false);
+  // State to track virtual background status
+  const [virtualBackgroundEnabled, setVirtualBackgroundEnabled] = useState<boolean>(false);
+  const [virtualBackgroundManager, setVirtualBackgroundManager] = useState<VirtualBackgroundManager | null>(null);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipantInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -251,28 +255,21 @@ const VirtualClassroom: React.FC = () => {
       
       await Promise.race([connectionPromise, timeoutPromise]);
       
-      console.log('Connected to room. Enabling microphone with noise cancellation by default.');
+      console.log('Connected to room. Microphone disabled by default.');
       
       // Try to start audio playback (may require user gesture depending on browser policy)
       try {
         await room.startAudio();
         setAudioPlaybackReady(true);
-        
-        // Enable microphone with noise cancellation by default
-        await room.localParticipant.setMicrophoneEnabled(true, {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        });
-        
-        setLocalTracks(prev => ({ ...prev, audio: true }));
-        setNoiseCancellationEnabled(true);
-        console.log('Microphone enabled with noise cancellation (Krisp) by default');
+        console.log('Audio playback ready, microphone can be enabled by user');
       } catch (_e) {
         setAudioPlaybackReady(false);
         console.log('Audio playback not ready, microphone will be enabled when user interacts');
-        setLocalTracks({ video: false, audio: false });
       }
+      
+      // Ensure microphone is disabled by default
+      setLocalTracks({ video: false, audio: false });
+      setNoiseCancellationEnabled(false);
 
       // Initialize any participants that might already be in the room
       try {
@@ -511,6 +508,12 @@ const VirtualClassroom: React.FC = () => {
 
       await room.localParticipant.setCameraEnabled(false);
       setLocalTracks(prev => ({ ...prev, video: false }));
+      
+      // Disable virtual background when video is disabled
+      if (virtualBackgroundManager) {
+        await virtualBackgroundManager.disable();
+        setVirtualBackgroundEnabled(false);
+      }
     } else {
       await room.localParticipant.setCameraEnabled(true);
       setLocalTracks(prev => ({ ...prev, video: true }));
@@ -521,6 +524,27 @@ const VirtualClassroom: React.FC = () => {
           const newPublication = Array.from(room.localParticipant.videoTrackPublications.values())[0];
           if (newPublication.videoTrack) {
             newPublication.videoTrack.attach(videoRef.current);
+            
+            // Enable virtual background for all participants by default
+            if (!virtualBackgroundManager) {
+              // Wait a bit for the video to be properly attached before applying virtual background
+              setTimeout(async () => {
+                if (newPublication.videoTrack) {
+                  try {
+                    const backgroundManager = createTutorVirtualBackground();
+                    await backgroundManager.enable({
+                      type: 'image',
+                      imageUrl: TUTOR_BACKGROUND,
+                    }, newPublication.videoTrack);
+                    setVirtualBackgroundManager(backgroundManager);
+                    setVirtualBackgroundEnabled(true);
+                    console.log('Virtual background enabled for participant');
+                  } catch (error) {
+                    console.error('Failed to enable virtual background:', error);
+                  }
+                }
+              }, 500); // Wait 500ms for video to be ready
+            }
           }
         }
       } catch (_e) {
@@ -564,6 +588,8 @@ const VirtualClassroom: React.FC = () => {
     return participant.audioTrack !== null && !participant.audioTrack.isMuted;
   };
 
+
+
   const leaveRoom = async () => {
     try {
       console.log('Leaving room...');
@@ -580,6 +606,11 @@ const VirtualClassroom: React.FC = () => {
       setRemoteParticipants([]);
       setLocalTracks({ video: false, audio: false });
       setNoiseCancellationEnabled(false);
+      if (virtualBackgroundManager) {
+        await virtualBackgroundManager.disable();
+      }
+      setVirtualBackgroundEnabled(false);
+      setVirtualBackgroundManager(null);
       setError(null);
       
       // Navigate back to session creation page
@@ -801,7 +832,11 @@ const VirtualClassroom: React.FC = () => {
           {noiseCancellationEnabled && (
             <div className="noise-cancellation-status">
               <span className="noise-cancellation-icon">🎧</span>
-              <span>Noise Cancellation Active</span>
+            </div>
+          )}
+          {virtualBackgroundEnabled && (
+            <div className="virtual-background-status">
+              <span className="virtual-background-icon">🖼️</span>
             </div>
           )}
           <div className="report-problem">

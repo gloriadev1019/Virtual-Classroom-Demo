@@ -22,7 +22,11 @@ A virtual classroom system built with React.js frontend and Laravel backend, fea
   - Automatically activates when microphone is enabled
   - Visual indicator shows when noise cancellation is active
   - Reduces background noise and echo for better audio quality
-- Virtual background support
+- **Virtual Background**: LiveKit track processor virtual background for all participants
+  - Automatically activates when any participant enables their camera
+  - Single professional classroom background image
+  - Visual indicator shows when virtual background is active
+  - Helps all participants maintain professional appearance
 - Participant name input and room joining flow
 
 ## 🏗️ Architecture
