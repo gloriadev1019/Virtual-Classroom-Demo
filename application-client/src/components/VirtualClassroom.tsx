@@ -245,16 +245,9 @@ const VirtualClassroom: React.FC = () => {
       
       await Promise.race([connectionPromise, timeoutPromise]);
       
-      console.log('Connected to room, enabling camera and microphone...');
-      
-      // Try to enable camera and microphone, but don't fail if it doesn't work
-      try {
-        await room.localParticipant.enableCameraAndMicrophone();
-        setLocalTracks({ video: true, audio: true });
-      } catch (mediaError) {
-        console.warn('Could not enable camera/microphone:', mediaError);
-        setLocalTracks({ video: false, audio: false });
-      }
+      console.log('Connected to room. Leaving camera and microphone disabled by default.');
+      // Ensure UI reflects disabled state
+      setLocalTracks({ video: false, audio: false });
 
       // Set local video track
       if (videoRef.current && room.localParticipant.videoTrackPublications.size > 0) {
@@ -456,11 +449,35 @@ const VirtualClassroom: React.FC = () => {
     if (!room) return;
     
     if (localTracks.video) {
+      // Detach existing local video from preview before disabling
+      try {
+        if (videoRef.current && room.localParticipant.videoTrackPublications.size > 0) {
+          const currentPublication = Array.from(room.localParticipant.videoTrackPublications.values())[0];
+          if (currentPublication.videoTrack) {
+            currentPublication.videoTrack.detach(videoRef.current);
+          }
+        }
+      } catch (_e) {
+        // ignore detach errors
+      }
+
       await room.localParticipant.setCameraEnabled(false);
       setLocalTracks(prev => ({ ...prev, video: false }));
     } else {
       await room.localParticipant.setCameraEnabled(true);
       setLocalTracks(prev => ({ ...prev, video: true }));
+
+      // After enabling, attach the newly created local video track to the preview element
+      try {
+        if (videoRef.current && room.localParticipant.videoTrackPublications.size > 0) {
+          const newPublication = Array.from(room.localParticipant.videoTrackPublications.values())[0];
+          if (newPublication.videoTrack) {
+            newPublication.videoTrack.attach(videoRef.current);
+          }
+        }
+      } catch (_e) {
+        // ignore attach errors
+      }
     }
   };
 
