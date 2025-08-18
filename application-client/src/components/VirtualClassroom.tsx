@@ -26,12 +26,23 @@ interface RemoteParticipantInfo {
   audioTrack: Track | null;
 }
 
+interface SessionResponse {
+  success: boolean;
+  session: {
+    id: string;
+    subject: string;
+    tutor_name: string;
+    student_name: string;
+  };
+}
+
 const VirtualClassroom: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [searchParams] = useSearchParams();
-  const role = searchParams.get('role') as 'tutor' | 'student' | 'moderator' || 'student';
+  const nameFromUrl = searchParams.get('name');
+  const role = (searchParams.get('role') as 'tutor' | 'student' | 'moderator') || 'student';
   
-  const [participantName, setParticipantName] = useState('');
+  const [participantName, setParticipantName] = useState<string>(nameFromUrl || '');
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [localTracks, setLocalTracks] = useState<{ video: boolean; audio: boolean }>({ video: false, audio: false });
@@ -41,7 +52,6 @@ const VirtualClassroom: React.FC = () => {
   const [convertedImages, setConvertedImages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
-  const [showNameInput, setShowNameInput] = useState(true);
   const [isJoining, setIsJoining] = useState(false);
   const [sessionTimer, setSessionTimer] = useState(0);
   const [currentView, setCurrentView] = useState<'whiteboard' | 'share' | 'file'>('whiteboard');
@@ -125,16 +135,49 @@ const VirtualClassroom: React.FC = () => {
     }
   }, [room]);
 
-  const handleNameSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (participantName.trim()) {
-      setIsJoining(true);
-      setShowNameInput(false);
-      // Join the room after name is submitted
-      await joinRoom();
-      setIsJoining(false);
+  // Resolve participant display name from DB based on role, or URL override
+  useEffect(() => {
+    const resolveName = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch session');
+        }
+        const data: SessionResponse = await response.json();
+        const dbNameForRole = role === 'tutor'
+          ? data.session.tutor_name
+          : role === 'student'
+            ? data.session.student_name
+            : 'Moderator';
+
+        const baseName = nameFromUrl || dbNameForRole || `Participant_${Math.floor(Math.random() * 1000)}`;
+        const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        setParticipantName(`${baseName} (${roleLabel})`);
+      } catch (_e) {
+        const baseName = nameFromUrl || `Participant_${Math.floor(Math.random() * 1000)}`;
+        const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+        setParticipantName(`${baseName} (${roleLabel})`);
+      }
+    };
+
+    if (sessionId && !participantName) {
+      resolveName();
     }
-  };
+  }, [sessionId, role, nameFromUrl, participantName]);
+
+  // Auto-join room when component mounts
+  useEffect(() => {
+    if (sessionId && participantName && !isJoining && !isConnected) {
+      const autoJoin = async () => {
+        setIsJoining(true);
+        await joinRoom();
+        setIsJoining(false);
+      };
+      autoJoin();
+    }
+  }, [sessionId, participantName]);
+
+
 
   const joinRoom = async () => {
     try {
@@ -642,31 +685,7 @@ const VirtualClassroom: React.FC = () => {
     triggerFileUpload();
   };
 
-  if (showNameInput) {
-    return (
-      <div className="name-input-container">
-        <div className="name-input-card">
-          <h2>Enter Your Name</h2>
-          <p>Session ID: {sessionId}</p>
-          <p>Role: {role}</p>
-          <form onSubmit={handleNameSubmit}>
-            <input
-              type="text"
-              value={participantName}
-              onChange={(e) => setParticipantName(e.target.value)}
-              placeholder="Enter your name"
-              required
-              className="name-input"
-              disabled={isJoining}
-            />
-            <button type="submit" className="name-submit-btn" disabled={isJoining}>
-              {isJoining ? '🔄 Joining...' : 'Join Classroom'}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
+
 
   if (error) {
     return (
