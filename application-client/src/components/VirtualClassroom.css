@@ -68,6 +68,23 @@
   font-size: 1rem;
 }
 
+.noise-cancellation-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #28a745;
+  font-size: 0.9rem;
+  font-weight: 500;
+  background: rgba(40, 167, 69, 0.1);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(40, 167, 69, 0.2);
+}
+
+.noise-cancellation-icon {
+  font-size: 1rem;
+}
+
 .session-timer {
   display: flex;
   align-items: center;
@@ -466,6 +483,25 @@
   background: #dc3545;
   transform: translate(-50%, -50%) rotate(45deg);
   border-radius: 1px;
+}
+
+.noise-cancellation-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 16px;
+  height: 16px;
+  background: #28a745;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  border: 2px solid white;
+}
+
+.noise-cancellation-indicator svg {
+  color: white;
 }
 
 .control-label {

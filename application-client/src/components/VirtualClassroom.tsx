@@ -46,6 +46,8 @@ const VirtualClassroom: React.FC = () => {
   const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [localTracks, setLocalTracks] = useState<{ video: boolean; audio: boolean }>({ video: false, audio: false });
+  // State to track noise cancellation status (LiveKit Cloud Krisp)
+  const [noiseCancellationEnabled, setNoiseCancellationEnabled] = useState<boolean>(false);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipantInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -249,16 +251,27 @@ const VirtualClassroom: React.FC = () => {
       
       await Promise.race([connectionPromise, timeoutPromise]);
       
-      console.log('Connected to room. Leaving camera and microphone disabled by default.');
-      // Ensure UI reflects disabled state
-      setLocalTracks({ video: false, audio: false });
-
+      console.log('Connected to room. Enabling microphone with noise cancellation by default.');
+      
       // Try to start audio playback (may require user gesture depending on browser policy)
       try {
         await room.startAudio();
         setAudioPlaybackReady(true);
+        
+        // Enable microphone with noise cancellation by default
+        await room.localParticipant.setMicrophoneEnabled(true, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+        
+        setLocalTracks(prev => ({ ...prev, audio: true }));
+        setNoiseCancellationEnabled(true);
+        console.log('Microphone enabled with noise cancellation (Krisp) by default');
       } catch (_e) {
         setAudioPlaybackReady(false);
+        console.log('Audio playback not ready, microphone will be enabled when user interacts');
+        setLocalTracks({ video: false, audio: false });
       }
 
       // Initialize any participants that might already be in the room
@@ -523,13 +536,22 @@ const VirtualClassroom: React.FC = () => {
       if (localTracks.audio) {
         await room.localParticipant.setMicrophoneEnabled(false);
         setLocalTracks(prev => ({ ...prev, audio: false }));
+        setNoiseCancellationEnabled(false);
         console.log('Microphone disabled');
       } else {
         // Ensure audio context is unlocked before enabling mic
         try { await room.startAudio(); setAudioPlaybackReady(true); } catch { setAudioPlaybackReady(false); }
-        await room.localParticipant.setMicrophoneEnabled(true);
+        
+        // Enable microphone with noise cancellation
+        await room.localParticipant.setMicrophoneEnabled(true, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+        
         setLocalTracks(prev => ({ ...prev, audio: true }));
-        console.log('Microphone enabled');
+        setNoiseCancellationEnabled(true);
+        console.log('Microphone enabled with noise cancellation (Krisp)');
       }
     } catch (error) {
       console.error('Error toggling microphone:', error);
@@ -557,6 +579,7 @@ const VirtualClassroom: React.FC = () => {
       setRoom(null);
       setRemoteParticipants([]);
       setLocalTracks({ video: false, audio: false });
+      setNoiseCancellationEnabled(false);
       setError(null);
       
       // Navigate back to session creation page
@@ -775,6 +798,12 @@ const VirtualClassroom: React.FC = () => {
         </div>
         
         <div className="session-status">
+          {noiseCancellationEnabled && (
+            <div className="noise-cancellation-status">
+              <span className="noise-cancellation-icon">🎧</span>
+              <span>Noise Cancellation Active</span>
+            </div>
+          )}
           <div className="report-problem">
             <span className="warning-icon">⚠️</span>
             <span>Report a Problem</span>
@@ -949,6 +978,7 @@ const VirtualClassroom: React.FC = () => {
         <button 
           onClick={toggleAudio} 
           className={`control-btn ${localTracks.audio ? 'active' : 'muted'}`}
+          title={localTracks.audio && noiseCancellationEnabled ? "Microphone with Noise Cancellation" : "Toggle Microphone"}
         >
           <div className="control-icon-wrapper">
             <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -956,6 +986,13 @@ const VirtualClassroom: React.FC = () => {
               <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
             </svg>
             {!localTracks.audio && <div className="mute-line"></div>}
+            {localTracks.audio && noiseCancellationEnabled && (
+              <div className="noise-cancellation-indicator" title="Noise Cancellation Active">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+              </div>
+            )}
           </div>
           <span className="control-label">Mic</span>
         </button>

@@ -18,7 +18,11 @@ A virtual classroom system built with React.js frontend and Laravel backend, fea
 - File upload support (PDF, DOCX, PPTX)
 - Automatic document conversion to PNG using LibreOffice
 - Role-based permissions and controls
-- Noise cancellation and virtual background support
+- **Noise Cancellation**: LiveKit Cloud Krisp noise cancellation enabled by default
+  - Automatically activates when microphone is enabled
+  - Visual indicator shows when noise cancellation is active
+  - Reduces background noise and echo for better audio quality
+- Virtual background support
 - Participant name input and room joining flow
 
 ## 🏗️ Architecture
