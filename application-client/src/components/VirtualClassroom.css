@@ -228,7 +228,7 @@
 
 /* Right Sidebar */
 .right-sidebar {
-  width: 400px;
+  width: clamp(280px, 30vw, 420px);
   background: #f8f9fa;
   border-left: 1px solid #e0e0e0;
   display: flex;
@@ -280,6 +280,7 @@
   flex-direction: column;
   gap: 15px;
   overflow-y: auto;
+  scroll-snap-type: y proximity;
 }
 
 .participant-panel {
@@ -288,12 +289,16 @@
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border: 1px solid #e0e0e0;
+  position: relative;
+  scroll-snap-align: start;
 }
 
 .participant-video {
   position: relative;
   width: 100%;
-  height: 200px;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  max-height: 220px;
   background: #333;
   display: flex;
   align-items: center;
@@ -375,6 +380,13 @@
   justify-content: center;
   gap: 30px;
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .control-btn {
@@ -490,7 +502,7 @@
 /* Responsive Design */
 @media (max-width: 1200px) {
   .right-sidebar {
-    width: 320px;
+    width: clamp(260px, 34vw, 340px);
   }
   
   .bottom-controls {
@@ -527,10 +539,17 @@
   .main-content {
     flex-direction: column;
   }
+  /* Place participants ABOVE the whiteboard on mobile */
+  .right-sidebar {
+    order: 0;
+  }
+  .whiteboard-area {
+    order: 1;
+  }
   
   .right-sidebar {
     width: 100%;
-    height: 250px;
+    height: 160px;
     flex-direction: row;
   }
   
@@ -544,26 +563,28 @@
   .participant-panels {
     flex-direction: row;
     overflow-x: auto;
+    overflow-y: hidden;
     padding: 10px;
+    gap: 12px;
+    scroll-snap-type: x mandatory;
   }
   
   .participant-panel {
-    min-width: 150px;
+    min-width: clamp(160px, 45%, 220px);
     flex-shrink: 0;
+    scroll-snap-align: start;
   }
   
-  .participant-video {
-    height: 150px;
-  }
+  .participant-video { max-height: 120px; }
   
   .bottom-controls {
-    padding: 10px 15px;
-    gap: 10px;
+    padding: 10px 12px;
+    gap: 12px;
   }
   
   .control-btn {
-    min-width: 60px;
-    padding: 8px 10px;
+    min-width: 56px;
+    padding: 6px 8px;
   }
   
   .control-icon {
@@ -573,6 +594,69 @@
   .control-label {
     font-size: 0.7rem;
   }
+
+  /* Reposition TLDraw toolbar vertically on the right to match mobile mock */
+  .whiteboard-container .tldraw [data-testid="toolbar"] {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  /* Tuck page and zoom menus at top/bottom right */
+  .whiteboard-container .tldraw [data-testid="page-menu"] {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+  }
+  .whiteboard-container .tldraw [data-testid="zoom-menu"] {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+  }
+  /* Hide overflow menu for a cleaner mobile UI */
+  .whiteboard-container .tldraw [data-testid="menu"] {
+    display: none;
+  }
+  /* Name overlay inside tiles on mobile */
+  .participant-info {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.92);
+  }
+  .participant-name {
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Simplify overlays on mobile */
+  .uploaded-files-panel {
+    display: none;
+  }
+  .page-navigation {
+    display: none;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .control-btn { min-width: 52px; }
+  .control-icon-wrapper { width: 56px; height: 56px; }
+}
+
+/* Large desktops */
+@media (min-width: 1600px) {
+  .right-sidebar { width: clamp(380px, 28vw, 520px); }
+  .participant-video { max-height: 260px; }
 }
 
 /* Keep existing styles for backward compatibility */
