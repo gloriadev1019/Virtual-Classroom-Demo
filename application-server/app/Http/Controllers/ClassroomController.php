@@ -109,8 +109,41 @@ class ClassroomController extends Controller
             mkdir($outputDir, 0755, true);
         }
 
-        // Convert using LibreOffice
-        $command = "soffice --headless --convert-to png --outdir " . escapeshellarg($outputDir) . " " . escapeshellarg($inputPath);
+        // Prepare headless LibreOffice execution with a writable user profile for cloud envs
+        $sofficePath = env('SOFFICE_PATH', '/usr/bin/soffice');
+        if (!file_exists($sofficePath)) {
+            $sofficePath = 'soffice';
+        }
+
+        $profileDir = storage_path('app/lo_profile');
+        if (!file_exists($profileDir)) {
+            mkdir($profileDir, 0700, true);
+        }
+        $xdgCache = $profileDir . '/xdg-cache';
+        $xdgConfig = $profileDir . '/xdg-config';
+        $xdgRuntime = $profileDir . '/xdg-runtime';
+        $tmpDir = $profileDir . '/tmp';
+        foreach ([$xdgCache, $xdgConfig, $xdgRuntime, $tmpDir] as $dir) {
+            if (!file_exists($dir)) {
+                mkdir($dir, 0700, true);
+            }
+        }
+
+        // LibreOffice expects a file URI for the user installation directory
+        $userInstallUri = 'file://' . str_replace(DIRECTORY_SEPARATOR, '/', $profileDir);
+
+        // Set environment variables to avoid dconf/HOME permission issues in headless servers
+        $envPrefix = 'HOME=' . escapeshellarg($profileDir)
+            . ' XDG_CACHE_HOME=' . escapeshellarg($xdgCache)
+            . ' XDG_CONFIG_HOME=' . escapeshellarg($xdgConfig)
+            . ' XDG_RUNTIME_DIR=' . escapeshellarg($xdgRuntime)
+            . ' TMPDIR=' . escapeshellarg($tmpDir);
+
+        // Convert using LibreOffice in headless mode
+        $command = $envPrefix . ' ' . escapeshellcmd($sofficePath)
+            . ' --headless --nologo --nodefault --nofirststartwizard --norestore --nolockcheck'
+            . ' -env:UserInstallation=' . $userInstallUri
+            . ' --convert-to png --outdir ' . escapeshellarg($outputDir) . ' ' . escapeshellarg($inputPath);
         
         $output = [];
         $returnCode = 0;
