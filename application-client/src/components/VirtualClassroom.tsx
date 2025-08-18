@@ -57,6 +57,7 @@ const VirtualClassroom: React.FC = () => {
   const [currentView, setCurrentView] = useState<'whiteboard' | 'share' | 'file'>('whiteboard');
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShareTrack, setScreenShareTrack] = useState<any>(null);
+  const [audioPlaybackReady, setAudioPlaybackReady] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,6 +211,9 @@ const VirtualClassroom: React.FC = () => {
           handleTrackUnmuted(publication, participant);
         }
       });
+      room.on(RoomEvent.AudioPlaybackStatusChanged, (canPlayback: boolean) => {
+        setAudioPlaybackReady(!!canPlayback);
+      });
 
       // Add connection state change listener
       room.on(RoomEvent.ConnectionStateChanged, (state) => {
@@ -248,6 +252,37 @@ const VirtualClassroom: React.FC = () => {
       console.log('Connected to room. Leaving camera and microphone disabled by default.');
       // Ensure UI reflects disabled state
       setLocalTracks({ video: false, audio: false });
+
+      // Try to start audio playback (may require user gesture depending on browser policy)
+      try {
+        await room.startAudio();
+        setAudioPlaybackReady(true);
+      } catch (_e) {
+        setAudioPlaybackReady(false);
+      }
+
+      // Initialize any participants that might already be in the room
+      try {
+        const existingParticipants = Array.from(room.remoteParticipants.values());
+        if (existingParticipants.length > 0) {
+          setRemoteParticipants(existingParticipants.map((participant) => {
+            let videoTrack: Track | null = null;
+            let audioTrack: Track | null = null;
+            participant.trackPublications.forEach((publication) => {
+              if (publication.isSubscribed && publication.track) {
+                if (publication.kind === Track.Kind.Video) {
+                  videoTrack = publication.track;
+                } else if (publication.kind === Track.Kind.Audio) {
+                  audioTrack = publication.track;
+                }
+              }
+            });
+            return { participant, videoTrack, audioTrack };
+          }));
+        }
+      } catch (initErr) {
+        console.warn('Failed to initialize existing participants:', initErr);
+      }
 
       // Set local video track
       if (videoRef.current && room.localParticipant.videoTrackPublications.size > 0) {
@@ -490,6 +525,8 @@ const VirtualClassroom: React.FC = () => {
         setLocalTracks(prev => ({ ...prev, audio: false }));
         console.log('Microphone disabled');
       } else {
+        // Ensure audio context is unlocked before enabling mic
+        try { await room.startAudio(); setAudioPlaybackReady(true); } catch { setAudioPlaybackReady(false); }
         await room.localParticipant.setMicrophoneEnabled(true);
         setLocalTracks(prev => ({ ...prev, audio: true }));
         console.log('Microphone enabled');
@@ -838,6 +875,7 @@ const VirtualClassroom: React.FC = () => {
                     <video
                       key={`${remoteParticipant.participant.identity}-${remoteParticipant.videoTrack.sid}`}
                       autoPlay
+                      muted
                       playsInline
                       className="video-element"
                       ref={(el) => {
@@ -854,6 +892,23 @@ const VirtualClassroom: React.FC = () => {
                     <div className="video-placeholder">
                       <span className="person-icon">👤</span>
                     </div>
+                  )}
+                  {remoteParticipant.audioTrack && (
+                    <audio
+                      key={`${remoteParticipant.participant.identity}-${remoteParticipant.audioTrack.sid}`}
+                      autoPlay
+                      playsInline
+                      ref={(el) => {
+                        if (el && remoteParticipant.audioTrack) {
+                          try {
+                            remoteParticipant.audioTrack.attach(el);
+                          } catch (error) {
+                            console.error('Error attaching audio track:', error);
+                          }
+                        }
+                      }}
+                      style={{ display: 'none' }}
+                    />
                   )}
                   {!remoteParticipant.videoTrack && (
                     <div className="camera-off-overlay">
@@ -877,6 +932,20 @@ const VirtualClassroom: React.FC = () => {
 
       {/* Bottom Control Bar */}
       <div className="bottom-controls">
+        {!audioPlaybackReady && (
+          <button 
+            onClick={async () => { if (room) { try { await room.startAudio(); setAudioPlaybackReady(true); } catch {} } }}
+            className={`control-btn`}
+          >
+            <div className="control-icon-wrapper">
+              <svg className="control-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+              </svg>
+            </div>
+            <span className="control-label">Enable Audio</span>
+          </button>
+        )}
         <button 
           onClick={toggleAudio} 
           className={`control-btn ${localTracks.audio ? 'active' : 'muted'}`}
