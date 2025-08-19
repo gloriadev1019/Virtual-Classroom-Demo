@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Room, RoomEvent, RemoteParticipant, RemoteTrack, RemoteTrackPublication, Track } from 'livekit-client';
-import { Tldraw, toRichText } from 'tldraw';
-import { useSyncDemo } from '@tldraw/sync';
-import 'tldraw/tldraw.css';
+import { toRichText, getDefaultUserPresence } from '@tldraw/tldraw';
 import './VirtualClassroom.css';
 import { VirtualBackgroundManager, createTutorVirtualBackground, TUTOR_BACKGROUND } from '../utils/virtualBackground';
+import CustomTldraw from './CustomTldraw';
+import { useRobustTldrawSync } from '../utils/robustTldrawSync';
 
 interface FileUploadResponse {
   success: boolean;
@@ -72,9 +72,36 @@ const VirtualClassroom: React.FC = () => {
   const LIVEKIT_URL = 'wss://virtual-classroom-wo4okd0f.livekit.cloud';
   const API_BASE_URL = 'http://192.168.105.3:6080';
 
-  // Set up tldraw sync for real-time collaboration
-  const syncStore = useSyncDemo({ 
-    roomId: `classroom-${sessionId}`
+  // Set up robust tldraw sync for real-time collaboration with better cloud support
+  const { store: syncStore, status: syncStatus, error: syncError, reconnect: reconnectSync, isFallback } = useRobustTldrawSync({
+    roomId: `classroom-${sessionId}`,
+    userInfo: {
+      id: participantName || `user-${Math.random().toString(36).substr(2, 9)}`,
+      name: participantName || 'Anonymous',
+      color: role === 'tutor' ? '#FF6B6B' : role === 'student' ? '#4ECDC4' : '#45B7D1'
+    },
+    getUserPresence: (store: any, user: any) => {
+      // Get default presence state
+      const defaultPresence = getDefaultUserPresence(store, user);
+      if (!defaultPresence) return null;
+
+      return {
+        ...defaultPresence,
+        // Ensure cursor is always included
+        cursor: defaultPresence.cursor || { x: 0, y: 0, type: 'default', rotation: 0 },
+        // Add role information to meta
+        meta: {
+          ...defaultPresence.meta,
+          role: role,
+          participantName: participantName
+        }
+      };
+    },
+    onConnectionChange: (status) => {
+      console.log('TLDraw sync status:', status);
+    },
+    enableFallback: true,
+    connectionTimeout: 15000 // 15 seconds timeout for cloud environments
   });
 
   // Timer effect
@@ -847,6 +874,27 @@ const VirtualClassroom: React.FC = () => {
             <span className="timer-icon">⏰</span>
             <span>Started: {formatTime(sessionTimer)}</span>
           </div>
+          <div className="sync-status">
+            <span className={`sync-indicator ${syncStatus === 'connected' ? 'connected' : syncStatus === 'error' ? 'error' : 'connecting'}`}>
+              {syncStatus === 'connected' ? '🟢' : syncStatus === 'error' ? '🔴' : '🟡'}
+            </span>
+            <span className="sync-text">
+              {syncStatus === 'connected' ? 'Sync Connected' : 
+               syncStatus === 'error' ? 'Sync Error' : 
+               syncStatus === 'connecting' ? 'Connecting...' : 
+               syncStatus === 'loading' ? 'Loading...' : 'Disconnected'}
+              {isFallback && ' (Fallback)'}
+            </span>
+            {syncError && (
+              <button 
+                className="reconnect-btn" 
+                onClick={reconnectSync}
+                title="Reconnect to whiteboard"
+              >
+                🔄
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -855,11 +903,11 @@ const VirtualClassroom: React.FC = () => {
         {/* Whiteboard Area */}
         <div className="whiteboard-area">
           <div className="whiteboard-container">
-            <Tldraw 
+            <CustomTldraw 
               store={syncStore}
               autoFocus
               inferDarkMode
-              onMount={(editor) => {
+              onMount={(editor: any) => {
                 editorRef.current = editor;
                 editor.setCurrentTool('select');
               }}
