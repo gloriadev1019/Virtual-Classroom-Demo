@@ -117,7 +117,7 @@ export const createTutorVirtualBackground = (): VirtualBackgroundManager => {
   return new VirtualBackgroundManager();
 };
 
-export const createBlurBackground = (blurAmount: number = 10): VirtualBackgroundManager => {
+export const createBlurBackground = (_blurAmount: number = 10): VirtualBackgroundManager => {
   return new VirtualBackgroundManager();
 };
 

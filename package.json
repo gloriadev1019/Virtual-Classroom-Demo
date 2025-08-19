@@ -2,5 +2,8 @@
   "dependencies": {
     "@livekit/components-react": "^2.9.14",
     "@livekit/track-processors": "^0.5.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0"
   }
 }

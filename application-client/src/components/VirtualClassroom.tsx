@@ -5,7 +5,8 @@ import { toRichText, getDefaultUserPresence } from '@tldraw/tldraw';
 import './VirtualClassroom.css';
 import { VirtualBackgroundManager, createTutorVirtualBackground, TUTOR_BACKGROUND } from '../utils/virtualBackground';
 import CustomTldraw from './CustomTldraw';
-import { useRobustTldrawSync } from '../utils/robustTldrawSync';
+import { useStableTldrawSync } from '../utils/stableTldrawSync';
+import { getTldrawConfig } from '../config/tldrawConfig';
 
 interface FileUploadResponse {
   success: boolean;
@@ -72,8 +73,11 @@ const VirtualClassroom: React.FC = () => {
   const LIVEKIT_URL = 'wss://virtual-classroom-wo4okd0f.livekit.cloud';
   const API_BASE_URL = 'http://192.168.105.3:6080';
 
-  // Set up robust tldraw sync for real-time collaboration with better cloud support
-  const { store: syncStore, status: syncStatus, error: syncError, reconnect: reconnectSync, isFallback } = useRobustTldrawSync({
+  // Get environment-specific configuration
+  const config = getTldrawConfig();
+  
+  // Set up stable tldraw sync for real-time collaboration with cloud support
+  const { store: syncStore, status: syncStatus, error: syncError, reconnect: reconnectSync, connectionAttempts } = useStableTldrawSync({
     roomId: `classroom-${sessionId}`,
     userInfo: {
       id: participantName || `user-${Math.random().toString(36).substr(2, 9)}`,
@@ -97,11 +101,12 @@ const VirtualClassroom: React.FC = () => {
         }
       };
     },
-    onConnectionChange: (status) => {
-      console.log('TLDraw sync status:', status);
+    onConnectionChange: (status: string) => {
+      console.log('TLDraw sync status changed:', status);
     },
-    enableFallback: true,
-    connectionTimeout: 15000 // 15 seconds timeout for cloud environments
+    connectionTimeout: config.connection.timeout,
+    maxRetries: config.connection.maxRetries,
+    retryDelay: config.connection.retryDelay
   });
 
   // Timer effect
@@ -880,10 +885,9 @@ const VirtualClassroom: React.FC = () => {
             </span>
             <span className="sync-text">
               {syncStatus === 'connected' ? 'Sync Connected' : 
-               syncStatus === 'error' ? 'Sync Error' : 
+               syncStatus === 'error' ? `Sync Error (${connectionAttempts} attempts)` : 
                syncStatus === 'connecting' ? 'Connecting...' : 
                syncStatus === 'loading' ? 'Loading...' : 'Disconnected'}
-              {isFallback && ' (Fallback)'}
             </span>
             {syncError && (
               <button 
