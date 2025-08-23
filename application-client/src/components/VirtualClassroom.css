@@ -1094,6 +1094,80 @@
   margin-bottom: 8px;
 }
 
+/* Encrypted PDF Error Styles */
+.encrypted-pdf-error {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+}
+
+.encrypted-pdf-error h2 {
+  color: #856404;
+}
+
+.encrypted-pdf-solution {
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  text-align: left;
+  margin-bottom: 25px;
+  border-left: 4px solid #ffc107;
+}
+
+.encrypted-pdf-solution h4 {
+  color: #856404;
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.encrypted-pdf-solution ol {
+  color: #495057;
+  line-height: 1.8;
+  margin-bottom: 20px;
+}
+
+.encrypted-pdf-solution li {
+  margin-bottom: 12px;
+  padding-left: 10px;
+}
+
+.encrypted-pdf-solution strong {
+  color: #856404;
+  font-weight: 600;
+}
+
+.file-format-info {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.file-format-info h5 {
+  color: #495057;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.file-format-info ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.file-format-info li {
+  padding: 8px 0;
+  color: #6c757d;
+  font-size: 1rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.file-format-info li:last-child {
+  border-bottom: none;
+}
+
 /* Name Input Styles */
 .name-input-container {
   height: 100vh;

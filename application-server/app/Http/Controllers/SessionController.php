@@ -23,7 +23,7 @@ class SessionController extends Controller
         ]);
 
         // Generate role-based URLs pointing to the React frontend
-        $frontendUrl = 'http://192.168.105.3:5080'; // React frontend URL
+        $frontendUrl = 'https://class.moalimy.com'; // React frontend URL
         $baseUrl = $frontendUrl . '/classroom/' . $session->id;
         
         $urls = [

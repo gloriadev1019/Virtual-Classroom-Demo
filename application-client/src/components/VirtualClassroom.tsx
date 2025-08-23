@@ -18,8 +18,11 @@ interface FileUploadResponse {
 
 interface FileConversionResponse {
   success: boolean;
-  converted_file: string;
-  url: string;
+  converted_file?: string;
+  url?: string;
+  error?: string;
+  details?: string;
+  encrypted?: boolean;
 }
 
 interface RemoteParticipantInfo {
@@ -71,7 +74,7 @@ const VirtualClassroom: React.FC = () => {
   const editorRef = useRef<any>(null);
 
   const LIVEKIT_URL = 'wss://virtual-classroom-wo4okd0f.livekit.cloud';
-  const API_BASE_URL = 'http://192.168.105.3:6080';
+  const API_BASE_URL = 'https://class.moalimy.com';
 
   // Get environment-specific configuration
   const config = getTldrawConfig();
@@ -730,17 +733,25 @@ const VirtualClassroom: React.FC = () => {
 
       const data: FileConversionResponse = await response.json();
 
-      if (data.success) {
-        setConvertedImages(prev => [...prev, data.url]);
+      if (data.success && data.url) {
+        setConvertedImages(prev => [...prev, data.url!]);
         
         // Automatically add the converted image to the whiteboard after a short delay
         setTimeout(() => {
-          addImageToWhiteboard(data.url, convertedImages.length);
+          addImageToWhiteboard(data.url!, convertedImages.length);
         }, 1000);
       } else {
-        setError('File conversion failed');
+        // Handle specific error types
+        if (response.status === 400 && data.encrypted) {
+          setError('PDF is encrypted and cannot be converted. Please provide an unencrypted PDF file or remove the password protection.');
+        } else if (data.error) {
+          setError(`File conversion failed: ${data.error}`);
+        } else {
+          setError('File conversion failed');
+        }
       }
     } catch (err) {
+      console.error('File conversion error:', err);
       setError('File conversion failed');
     } finally {
       setIsConverting(false);
@@ -828,27 +839,55 @@ const VirtualClassroom: React.FC = () => {
 
 
   if (error) {
+    // Check if this is an encrypted PDF error
+    const isEncryptedPdfError = error.includes('encrypted') || error.includes('password');
+    
     return (
-      <div className="error-container">
-        <h2>Connection Error</h2>
+      <div className={`error-container ${isEncryptedPdfError ? 'encrypted-pdf-error' : ''}`}>
+        <h2>{isEncryptedPdfError ? '🔒 Encrypted PDF Detected' : 'Connection Error'}</h2>
         <p>{error}</p>
+        
+        {isEncryptedPdfError && (
+          <div className="encrypted-pdf-solution">
+            <h4>How to fix this:</h4>
+            <ol>
+              <li><strong>Remove password protection:</strong> Open the PDF in a PDF reader and save it without password protection</li>
+              <li><strong>Use a different file:</strong> Upload an unencrypted PDF, DOCX, or PPTX file</li>
+              <li><strong>Convert the file:</strong> Use online tools to remove password protection before uploading</li>
+            </ol>
+            <div className="file-format-info">
+              <h5>Supported file formats:</h5>
+              <ul>
+                <li>📄 PDF (unencrypted)</li>
+                <li>📝 DOCX (Word documents)</li>
+                <li>📊 PPTX (PowerPoint presentations)</li>
+              </ul>
+            </div>
+          </div>
+        )}
+        
         <div className="error-actions">
-          <button onClick={() => window.location.reload()} className="retry-btn">
-            🔄 Retry Connection
-          </button>
+          {!isEncryptedPdfError && (
+            <button onClick={() => window.location.reload()} className="retry-btn">
+              🔄 Retry Connection
+            </button>
+          )}
           <button onClick={() => setError(null)} className="dismiss-btn">
             ✕ Dismiss
           </button>
         </div>
-        <div className="error-tips">
-          <h4>Troubleshooting Tips:</h4>
-          <ul>
-            <li>Make sure the backend server is running on port 6080</li>
-            <li>Check your internet connection</li>
-            <li>Try refreshing the page</li>
-            <li>Contact support if the issue persists</li>
-          </ul>
-        </div>
+        
+        {!isEncryptedPdfError && (
+          <div className="error-tips">
+            <h4>Troubleshooting Tips:</h4>
+            <ul>
+              <li>Make sure the backend server is running on port 6080</li>
+              <li>Check your internet connection</li>
+              <li>Try refreshing the page</li>
+              <li>Contact support if the issue persists</li>
+            </ul>
+          </div>
+        )}
       </div>
     );
   }

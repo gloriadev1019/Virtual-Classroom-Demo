@@ -104,6 +104,28 @@ class ClassroomController extends Controller
         $inputPath = storage_path('app/public/uploads/' . $filename);
         $outputDir = storage_path('app/public/converted/');
 
+        // Check if input file exists
+        if (!file_exists($inputPath)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Input file not found'
+            ], 404);
+        }
+
+        // Check if it's a PDF and if it's encrypted
+        $fileExtension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if ($fileExtension === 'pdf') {
+            $pdfInfo = $this->checkPdfEncryption($inputPath);
+            if ($pdfInfo['encrypted']) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'PDF is encrypted and cannot be converted',
+                    'details' => 'Please provide an unencrypted PDF file or remove the password protection.',
+                    'encrypted' => true
+                ], 400);
+            }
+        }
+
         // Create output directory if it doesn't exist
         if (!file_exists($outputDir)) {
             mkdir($outputDir, 0755, true);
@@ -157,10 +179,21 @@ class ClassroomController extends Controller
                 'return_code' => $returnCode
             ]);
             
+            // Check if the error is related to encryption
+            $errorOutput = implode("\n", $output);
+            if (stripos($errorOutput, 'encrypted') !== false || stripos($errorOutput, 'password') !== false) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'PDF is encrypted and cannot be converted',
+                    'details' => 'Please provide an unencrypted PDF file or remove the password protection.',
+                    'encrypted' => true
+                ], 400);
+            }
+            
             return response()->json([
                 'success' => false,
                 'error' => 'File conversion failed',
-                'details' => implode("\n", $output)
+                'details' => $errorOutput
             ], 500);
         }
 
@@ -176,10 +209,52 @@ class ClassroomController extends Controller
 
         $convertedFile = basename($convertedFiles[0]);
         
+        // Generate URL using the storage path
+        $baseUrl = config('app.url');
+        if (str_ends_with($baseUrl, '/')) {
+            $baseUrl = rtrim($baseUrl, '/');
+        }
+        $fileUrl = $baseUrl . '/storage/converted/' . $convertedFile;
+        
         return response()->json([
             'success' => true,
             'converted_file' => $convertedFile,
-            'url' => asset('storage/converted/' . $convertedFile),
+            'url' => $fileUrl,
         ]);
+    }
+
+    /**
+     * Check if a PDF file is encrypted
+     */
+    private function checkPdfEncryption($filePath)
+    {
+        try {
+            $content = file_get_contents($filePath);
+            
+            // Check for encryption dictionary in PDF
+            if (preg_match('/\/Encrypt\s+\d+\s+\d+\s+R/', $content)) {
+                return ['encrypted' => true, 'reason' => 'PDF contains encryption dictionary'];
+            }
+            
+            // Check for password protection indicators
+            if (preg_match('/\/Filter\s*\/Standard/', $content) && preg_match('/\/V\s*[1-5]/', $content)) {
+                return ['encrypted' => true, 'reason' => 'PDF uses standard encryption'];
+            }
+            
+            // Additional check for common encryption patterns
+            if (preg_match('/\/Encrypt\s+\d+\s+\d+\s+R.*\/Filter\s*\/Standard/', $content)) {
+                return ['encrypted' => true, 'reason' => 'PDF uses standard encryption with dictionary'];
+            }
+            
+            return ['encrypted' => false, 'reason' => 'PDF appears to be unencrypted'];
+            
+        } catch (\Exception $e) {
+            Log::error('Error checking PDF encryption', [
+                'file' => $filePath,
+                'error' => $e->getMessage()
+            ]);
+            
+            return ['encrypted' => false, 'reason' => 'Could not determine encryption status'];
+        }
     }
 }

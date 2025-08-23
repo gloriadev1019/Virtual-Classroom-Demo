@@ -49,7 +49,7 @@ const AdminSessionCreation: React.FC = () => {
     setSessionResult(null);
 
     try {
-      const response = await fetch('http://192.168.105.3:6080/api/sessions', {
+      const response = await fetch('https://class.moalimy.com/api/sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
